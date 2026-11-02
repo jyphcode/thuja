@@ -32,6 +32,9 @@ with Thuja.Widgets.Gauges;
 with Thuja.Widgets.Generic_Lists;
 with Thuja.Widgets.Labels;
 
+with Demo.Keyboard;
+with Demo.Placeholder;
+
 procedure Showcase is
 
    package Blocks renames Thuja.Widgets.Blocks;
@@ -39,20 +42,33 @@ procedure Showcase is
    package Labels renames Thuja.Widgets.Labels;
 
    ---------------------------------------------------------------------
-   --  The rows of the list: the demos of the first thuja, the ones to
-   --  rebuild on this core.
+   --  The demos of the first thuja, the ones to rebuild on this core.
+   --  One table entry per page; the sidebar lists them in this order.
    ---------------------------------------------------------------------
 
-   function Demo_Count return Natural is (6);
+   type Page is (HTop, Text_Editor, Flexbox, Sort_Visual, Sine_Wave, Keyboard);
+
+   type Demo_Access is not null access all Demo.Instance'Class;
+
+   HTop_Demo        : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("HTop");
+   Text_Editor_Demo : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("Text Editor");
+   Flexbox_Demo     : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("Flexbox");
+   Sort_Visual_Demo : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("Sort Visual");
+   Sine_Wave_Demo   : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("Sine Wave");
+   Keyboard_Demo    : aliased Demo.Keyboard.State;
+
+   Demos : constant array (Page) of Demo_Access :=
+     [HTop        => HTop_Demo'Access,
+      Text_Editor => Text_Editor_Demo'Access,
+      Flexbox     => Flexbox_Demo'Access,
+      Sort_Visual => Sort_Visual_Demo'Access,
+      Sine_Wave   => Sine_Wave_Demo'Access,
+      Keyboard    => Keyboard_Demo'Access];
+
+   function Demo_Count return Natural is (Demos'Length);
 
    function Demo_Name (Index : Positive) return String is
-     (case Index is
-         when 1 => "HTop",
-         when 2 => "Text Editor",
-         when 3 => "Flexbox",
-         when 4 => "Sort Visual",
-         when 5 => "Sine Wave",
-         when others => "Keyboard");
+     (Demos (Page'Val (Index - 1)).Name);
 
    package Demo_Lists is new Thuja.Widgets.Generic_Lists
      (Count => Demo_Count, Text => Demo_Name);
@@ -61,9 +77,11 @@ procedure Showcase is
    --  State
    ---------------------------------------------------------------------
 
+   type Focus is (Sidebar, Main);
+
    type App_State is record
       Demos      : Demo_Lists.State;
-      Last_Event : Event   := No_Event;
+      Focused    : Focus   := Sidebar;
       Frames     : Natural := 0;
       Bytes      : Natural := 0;    --  sent to the terminal by the last frame
       Quit       : Boolean := False;
@@ -73,7 +91,7 @@ procedure Showcase is
    Faint  : constant Style := Dim (Plain);
 
    function Image (N : Natural) return String;
-   function Describe (Mods : Modifiers) return String;
+   function Current (State : App_State) return Demo_Access;
 
    procedure Draw (Frame : in out Buffer; State : in out App_State);
    procedure Update (State : in out App_State; E : Event);
@@ -89,15 +107,12 @@ procedure Showcase is
       return Text (Text'First + 1 .. Text'Last);
    end Image;
 
-   --------------
-   -- Describe --
-   --------------
+   -------------
+   -- Current --
+   -------------
 
-   function Describe (Mods : Modifiers) return String is
-     ((if Mods.Ctrl then "Ctrl " else "")
-      & (if Mods.Alt then "Alt " else "")
-      & (if Mods.Shift then "Shift " else "")
-      & (if Mods = No_Modifiers then "none" else ""));
+   function Current (State : App_State) return Demo_Access is
+     (Demos (Page'Val (State.Demos.Selected - 1)));
 
    ----------
    -- Draw --
@@ -114,52 +129,23 @@ procedure Showcase is
 
       Panes : constant Rect_Array := Split (Bands (2), Row, [Fixed (24), Flex]);
 
-      Info : constant Rect_Array :=
-        Split (Blocks.Inner (Panes (2)), Column,
-               [Fixed (1), Fixed (1), Fixed (1), Fixed (1), Fixed (1), Flex, Fixed (2)]);
-
       Status : constant Rect_Array :=
         Split (Blocks.Inner (Footer), Row, [Flex, Fixed (34)], Gap => 2);
 
-      E : Event renames State.Last_Event;
-
    begin
-      Blocks.Draw (Frame, Header, "thuja", Accent);
+      Blocks.Draw (Frame, Header, "thuja");
       Labels.Draw (Frame, Blocks.Inner (Header), "A terminal user interface library in Ada");
       Labels.Draw
         (Frame, Blocks.Inner (Header),
          Image (Natural (Frame.Width)) & " x " & Image (Natural (Frame.Height)),
          Faint, Labels.Right);
 
-      Blocks.Draw (Frame, Panes (1), "Demos to rebuild");
+      Blocks.Draw
+        (Frame, Panes (1), "Demos to rebuild",
+         Demo.Border (State.Focused = Sidebar));
       Demo_Lists.Draw (Frame, Blocks.Inner (Panes (1)), State.Demos);
 
-      Blocks.Draw (Frame, Panes (2), "Last event");
-      Labels.Draw (Frame, Info (1), "kind : " & E.Kind'Image);
-
-      case E.Kind is
-         when Key_Down =>
-            Labels.Draw (Frame, Info (2), "key  : " & E.Key'Image);
-            Labels.Draw (Frame, Info (3), "mods : " & Describe (E.Mods));
-
-         when Text_Input =>
-            Labels.Draw (Frame, Info (2), "text : " & E.Text (1 .. E.Length));
-
-         when Window_Resized =>
-            Labels.Draw
-              (Frame, Info (2),
-               "size : " & Image (Natural (E.Size.Width)) & " x "
-               & Image (Natural (E.Size.Height)));
-
-         when others =>
-            null;
-      end case;
-
-      Labels.Draw (Frame, Info (5), "selected : " & Demo_Name (State.Demos.Selected), Accent);
-      Labels.Draw (Frame, Info (7), "Up/Down move the list. Type to see keys decoded.", Faint);
-      Labels.Draw
-        (Frame, Make (Info (7).Origin.X, Info (7).Origin.Y + 1, Info (7).Extent.Width, 1),
-         "Try an accent, F5, Ctrl+Right: not decoded yet.", Faint);
+      Current (State).Draw (Frame, Panes (2), Focused => State.Focused = Main);
 
       Blocks.Draw (Frame, Footer, "q quits");
       Gauges.Draw (Frame, Status (1), State.Frames mod 101, Accent);
@@ -180,19 +166,26 @@ procedure Showcase is
          return;
       end if;
 
-      State.Last_Event := E;
-
       if E.Kind = Quit
-        or else (E.Kind = Text_Input and then E.Text (1) = 'q')
-        or else (E.Kind = Key_Down and then E.Key = Key_Escape)
+        or else (E.Kind = Text_Input and then E.Text (1) = 'q'
+                 and then State.Focused = Sidebar)
+        or else (E.Kind = Key_Down and then E.Key = Key_Escape
+                 and then State.Focused = Sidebar)
         or else (E.Kind = Key_Down and then E.Key = Key_C and then E.Mods.Ctrl)
       then
          State.Quit := True;
          return;
       end if;
 
-      --  Offer the event to the one widget that has state.
-      Demo_Lists.Handle (State.Demos, E, Used);
+      if E.Kind = Key_Down and then E.Key = Key_Tab then
+         State.Focused := (if State.Focused = Sidebar then Main else Sidebar);
+         return;
+      end if;
+
+      case State.Focused is
+         when Sidebar => Demo_Lists.Handle (State.Demos, E, Used);
+         when Main    => Current (State).Update (E, Used);
+      end case;
    end Update;
 
    -----------
@@ -220,6 +213,8 @@ begin
          Frame : Buffer (80, 24);
       begin
          Update (State, Key_Event (Key_Down, Down => True));
+         Update (State, Key_Event (Key_End, Down => True));
+         Update (State, Key_Event (Key_Tab, Down => True));
          Update (State, Key_Event (Key_End, Down => True));
          Draw (Frame, State);
          Print (Frame);
