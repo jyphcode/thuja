@@ -29,6 +29,9 @@ package body Thuja.Input with SPARK_Mode is
    procedure Feed_CSI (D : in out Decoder; Byte : Character; E : out Event)
      with Pre => not E'Constrained;
 
+   procedure Feed_SS3 (D : in out Decoder; Byte : Character; E : out Event)
+     with Pre => not E'Constrained;
+
    -----------------
    -- Feed_Ground --
    -----------------
@@ -98,8 +101,11 @@ package body Thuja.Input with SPARK_Mode is
          when '0' .. '9' =>
             E := Key_Press (Digit (Character'Pos (Byte) - Character'Pos ('0')), Alt);
 
+         when 'O' =>
+            D.Where := SS3;
+            E := No_Event;
+
          when others =>
-            --  PLACEHOLDER: 'O' starts an SS3 sequence (F1 to F4).
             E := No_Event;
       end case;
    end Feed_Escape;
@@ -148,6 +154,23 @@ package body Thuja.Input with SPARK_Mode is
       end case;
    end Feed_CSI;
 
+   --------------
+   -- Feed_SS3 --
+   --------------
+
+   procedure Feed_SS3 (D : in out Decoder; Byte : Character; E : out Event) is
+   begin
+      --  SS3 is a single shift, so we only process as SS3 for one byte
+      D.Where := Ground;
+
+      case Byte is
+         when 'P' .. 'S' =>
+            E := Key_Press
+               (Key'Val (Key'Pos (Key_F1) + Character'Pos (Byte) - Character'Pos ('P')));
+         when others => E := No_Event;
+      end case;
+   end Feed_SS3;
+
    ----------
    -- Feed --
    ----------
@@ -158,6 +181,7 @@ package body Thuja.Input with SPARK_Mode is
          when Ground => Feed_Ground (D, Byte, E);
          when Escape => Feed_Escape (D, Byte, E);
          when CSI    => Feed_CSI (D, Byte, E);
+         when SS3    => Feed_SS3 (D, Byte, E);
       end case;
    end Feed;
 
@@ -166,9 +190,12 @@ package body Thuja.Input with SPARK_Mode is
    -----------
 
    procedure Flush (D : in out Decoder; E : out Event) is
+      Alt_Shift : constant Modifiers := (Alt => True, Shift => True, others => False);
    begin
       if D.Where = Escape then
          E := Key_Press (Key_Escape);
+      elsif D.Where = SS3 then
+         E := Key_Press (Key_O, Alt_Shift);
       else
          E := No_Event;
       end if;

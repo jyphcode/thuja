@@ -35,7 +35,6 @@
 --    * UTF-8 text (bytes 16#80# and above),
 --    * CSI with parameters: Delete, Insert, Page Up/Down, F5 to F12,
 --      and modifiers on arrows ("1;5C" is Ctrl + Right),
---    * SS3 sequences (ESC O ...): F1 to F4, application-mode arrows,
 --    * mouse reports (SGR mode 1006) and bracketed paste.
 --  tests/ has a TODO line for each.
 
@@ -68,10 +67,11 @@ package Thuja.Input with SPARK_Mode is
 
 private
 
-   type State is (Ground, Escape, CSI);
+   type State is (Ground, Escape, CSI, SS3);
    --  Ground : between events.
    --  Escape : 1B received.
    --  CSI    : 1B 5B received; collecting until the final byte.
+   --  SS3    : 1B 4F received; one byte follows.
 
    type Decoder is record
       Where  : State := Ground;
