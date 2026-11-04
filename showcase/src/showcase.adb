@@ -177,8 +177,11 @@ procedure Showcase is
          return;
       end if;
 
-      if E.Kind = Key_Down and then E.Key = Key_Tab then
-         State.Focused := (if State.Focused = Sidebar then Main else Sidebar);
+      if E.Kind = Key_Down and then State.Focused = Sidebar and then E.Key = Key_Return then
+         State.Focused := Main;
+         return;
+      elsif E.Kind = Key_Down and then State.Focused = Main and then E.Key = Key_Escape then
+         State.Focused := Sidebar;
          return;
       end if;
 
@@ -214,7 +217,7 @@ begin
       begin
          Update (State, Key_Event (Key_Down, Down => True));
          Update (State, Key_Event (Key_End, Down => True));
-         Update (State, Key_Event (Key_Tab, Down => True));
+         Update (State, Key_Event (Key_Return, Down => True));
          Update (State, Key_Event (Key_End, Down => True));
          Draw (Frame, State);
          Print (Frame);
