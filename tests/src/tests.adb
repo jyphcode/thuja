@@ -26,6 +26,7 @@ with Thuja.UTF8;
 with Thuja.Widgets.Blocks;
 with Thuja.Widgets.Gauges;
 with Thuja.Widgets.Generic_Lists;
+with Thuja.Widgets.Text_Fields;
 with Thuja.Widgets.Labels;
 
 procedure Tests is
@@ -384,6 +385,76 @@ procedure Tests is
       Check ("list stops at the last row", List.Selected = 5);
    end Test_Widgets;
 
+---------------------------------------------------------------------
+--  Text Input Widget: Tests
+---------------------------------------------------------------------
+
+procedure Test_Text_Fields is
+   package Text_Field renames Thuja.Widgets.Text_Fields;
+   use Text_Field.Input_Strings;
+   S    : Text_Field.State;
+   Used : Boolean;
+   TestText : Bounded_String := To_Bounded_String ("ABCDEFG");
+   LetterD : constant Event_List := Decode ("D");
+begin
+   for E of Decode(To_String (TestText)) loop
+      Text_Field.Handle(S, E, Used);
+   end loop;
+
+   Check ("Confirm Typed text matches", S.Text = TestText);
+
+   TestText := To_Bounded_String ("ABC");
+
+   Text_Field.Set_Text(S, To_String (TestText));
+
+   Check ("Confirm Set Text worked", S.Text = TestText);
+
+   --  Move left twice
+   Text_Field.Handle(S, Key_Event (Key_Left, Down => True), Used);
+   Text_Field.Handle(S, Key_Event (Key_Left, Down => True), Used);
+
+   -- Type a letter D
+   Text_Field.Handle (S, LetterD (LetterD'First), Used);
+   -- Confirm it inserted it at the proper point
+   Check ("Confirm Moving and insert worked", S.Text = To_Bounded_String ("ADBC"));
+
+   -- Check making sure right does not crash the program
+   for E in 1 .. 100 loop
+      --  Move right
+      Text_Field.Handle(S, Key_Event (Key_Right, Down => True), Used);
+   end loop;
+
+   -- Type another Letter D
+   Text_Field.Handle (S, LetterD (LetterD'First), Used);
+   -- Confirm it inserted it at the proper point
+   Check ("Confirm Moving right and still adds it at the end", S.Text = To_Bounded_String ("ADBCD"));
+
+   --  Move left once
+   Text_Field.Handle(S, Key_Event (Key_Left, Down => True), Used);
+   --  Check making sure backspace removes everything but the remaining letter
+   for E in 1 .. 100 loop
+      --  Backspace
+      Text_Field.Handle(S, Key_Event (Key_Backspace, Down => True), Used);
+   end loop;
+
+   Check ("Confirm backspace is working", S.Text = "D");
+
+   --  Delete word before cursor
+   Text_Field.Set_Text (S, "One.  two   three");
+   -- Move to position 11
+   Text_Field.Handle (S, Key_Event (Key_Home, Down => True), Used);
+   for I in 1 .. 14 loop
+      Text_Field.Handle (S, Key_Event (Key_Right, Down => True), Used);
+   end loop;
+
+   Text_Field.Handle (S,
+      Key_Event (Key_W, Down => True,
+               Mods => (Ctrl => True, others => False)),
+      Used);
+
+   Check ("Delete previous word", S.Text = "One.  two   ree");
+end Test_Text_Fields;
+
 begin
    Test_Geometry;
    Test_Buffers;
@@ -391,6 +462,7 @@ begin
    Test_Input;
    Test_Renderer;
    Test_Widgets;
+   Test_Text_Fields;
 
    New_Line;
    Put_Line (Failures'Image & " failed," & Pending'Image & " still to do");

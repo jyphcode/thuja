@@ -34,6 +34,7 @@ with Thuja.Widgets.Labels;
 
 with Demo.Keyboard;
 with Demo.Placeholder;
+with Demo.Text_Fields;
 
 procedure Showcase is
 
@@ -46,7 +47,7 @@ procedure Showcase is
    --  One table entry per page; the sidebar lists them in this order.
    ---------------------------------------------------------------------
 
-   type Page is (HTop, Text_Editor, Flexbox, Sort_Visual, Sine_Wave, Keyboard);
+   type Page is (HTop, Text_Editor, Flexbox, Sort_Visual, Sine_Wave, Keyboard, Text_Fields);
 
    type Demo_Access is not null access all Demo.Instance'Class;
 
@@ -56,6 +57,7 @@ procedure Showcase is
    Sort_Visual_Demo : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("Sort Visual");
    Sine_Wave_Demo   : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("Sine Wave");
    Keyboard_Demo    : aliased Demo.Keyboard.State;
+   Text_Fields_Demo : aliased Demo.Text_Fields.State;
 
    Demos : constant array (Page) of Demo_Access :=
      [HTop        => HTop_Demo'Access,
@@ -63,7 +65,8 @@ procedure Showcase is
       Flexbox     => Flexbox_Demo'Access,
       Sort_Visual => Sort_Visual_Demo'Access,
       Sine_Wave   => Sine_Wave_Demo'Access,
-      Keyboard    => Keyboard_Demo'Access];
+      Keyboard    => Keyboard_Demo'Access,
+      Text_Fields => Text_Fields_Demo'Access];
 
    function Demo_Count return Natural is (Demos'Length);
 
