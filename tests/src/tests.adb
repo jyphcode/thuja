@@ -254,14 +254,14 @@ procedure Tests is
       Check ("endless sequence is abandoned",
              Endless'Length > 0 and then Endless'Length <= 500);
 
-      Todo ("UTF-8 text: e acute is one Text_Input of 2 bytes",
+      Check ("UTF-8 text: e acute is one Text_Input of 2 bytes",
             Accent'Length = 1 and then Accent (1).Kind = Text_Input
             and then Accent (1).Length = 2);
       Todo ("Delete (CSI 3 ~)",
             Delete'Length = 1 and then Is_Key (Delete (1), Key_Delete));
       Todo ("Ctrl + Right (CSI 1;5 C)",
             Ctrl_Right'Length = 1 and then Is_Key (Ctrl_Right (1), Key_Right, Ctrl));
-      Todo ("F1 (SS3 P)",
+      Check ("F1 (SS3 P)",
             F1'Length = 1 and then Is_Key (F1 (1), Key_F1));
       Todo ("F5 (CSI 15 ~)",
             F5'Length = 1 and then Is_Key (F5 (1), Key_F5));
