@@ -115,7 +115,7 @@ package body Thuja.Widgets.Text_Fields is
       Title     : String)
    is
       Look  : constant Style := Thuja.Styles.Plain;
-      Render_Text : Bounded_String := S.Text;
+      Render_Text : constant Bounded_String := S.Text;
       Row   : constant Rect :=
         Make (Area.Origin.X, Area.Origin.Y, Area.Extent.Width, 3);
    begin
@@ -131,7 +131,10 @@ package body Thuja.Widgets.Text_Fields is
       Blocks.Draw (Frame, Row, Title);
 
       --  Inject cursor at specific point
-      Insert (Render_Text, S.Cursor + 1, "|");
+      Set_Cursor (B => Frame,
+         X => Pixels (S.Cursor + 1),
+         Y => 1,
+         Container => Row);
 
       Put (Frame, Row.Origin.X + 1, Row.Origin.Y + 1,
             To_String (Render_Text), Look, Clip => Row);

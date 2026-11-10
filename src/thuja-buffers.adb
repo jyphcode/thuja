@@ -11,6 +11,9 @@ package body Thuja.Buffers with SPARK_Mode is
             B.Cells (Y, X) := Blank;
          end loop;
       end loop;
+
+      --  Clear cursor data
+      B.Cursor_Request := (others => <>);
    end Clear;
 
    ---------
@@ -53,6 +56,9 @@ package body Thuja.Buffers with SPARK_Mode is
             Target.Cells (Y, X) := Source.Cells (Y, X);
          end loop;
       end loop;
+
+      --  Copy cursor data
+      Target.Cursor_Request := Source.Cursor_Request;
    end Copy;
 
    ---------
@@ -120,5 +126,30 @@ package body Thuja.Buffers with SPARK_Mode is
 
       return Result;
    end Row_Image;
+
+   ---------------
+   --   Cursor  --
+   ---------------
+
+   function Cursor (B : Buffer) return Cursor_Info is
+   begin
+      return B.Cursor_Request;
+   end Cursor;
+
+   procedure Set_Cursor
+      (B         : in out Buffer;
+      X, Y       : Pixels; --  x,y within the container
+      Container  : Rect) is   --  container for the cursor
+   begin
+      B.Cursor_Request.X := Container.Origin.X + X;
+      B.Cursor_Request.Y := Container.Origin.Y + Y;
+      B.Cursor_Request.Style := B.Cursor_Style_State;
+      B.Cursor_Request.Visible := True;
+   end Set_Cursor;
+
+   procedure Set_Cursor_Style (B : in out Buffer; Style : Cursor_Style) is
+   begin
+      B.Cursor_Style_State := Style;
+   end Set_Cursor_Style;
 
 end Thuja.Buffers;
