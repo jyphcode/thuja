@@ -22,6 +22,15 @@ package body Thuja.Generic_Renderer is
    --  C, or a space if C is a control character. Cell contents must
    --  never be able to send a command to the terminal.
 
+   procedure Render_Cell
+     (X, Y         : Pixels;
+      C            : Cell;
+      Cursor_X     : in out Integer;
+      Cursor_Y     : in out Integer;
+      Active_Style : in out Style;
+      Style_Set    : in out Boolean);
+   --  Emit cursor jump and style changes only when state differs.
+
    -----------
    -- Image --
    -----------
@@ -75,6 +84,38 @@ package body Thuja.Generic_Renderer is
       return C;
    end Printable;
 
+   -----------------
+   -- Render_Cell --
+   -----------------
+
+   procedure Render_Cell
+      (X, Y : Pixels;
+      C : Cell;
+      Cursor_X : in out Integer;
+      Cursor_Y : in out Integer;
+      Active_Style : in out Style;
+      Style_Set : in out Boolean) is
+   begin
+      --  Jump cursor if not in position
+      if Integer (X) /= Cursor_X or else Integer (Y) /= Cursor_Y then
+         Emit (Move_To (X, Y));
+      end if;
+
+      --  If different from active state, emit style
+      if not Style_Set or else C.Style /= Active_Style then
+         Emit (Select_Style (C.Style));
+         Active_Style := C.Style;
+         Style_Set := True;
+      end if;
+
+      --  Print char
+      Emit (UTF8.Encode (Printable (C.Glyph)));
+
+      --  Update cursor position
+      Cursor_X := Integer (X) + 1;
+      Cursor_Y := Integer (Y);
+   end Render_Cell;
+
    ----------
    -- Diff --
    ----------
@@ -95,24 +136,7 @@ package body Thuja.Generic_Renderer is
 
             if C /= Get (Before, X, Y) then
 
-               --  If not in position, jump cursor
-               if Integer (X) /= Cursor_X or else Integer (Y) /= Cursor_Y then
-                  Emit (Move_To (X, Y));
-               end if;
-
-               --  If different from active state, emit style
-               if not Style_Set or else C.Style /= Active_Style then
-                  Emit (Select_Style (C.Style));
-                  Active_Style := C.Style;
-                  Style_Set := True;
-               end if;
-
-               --  Print char
-               Emit (UTF8.Encode (Printable (C.Glyph)));
-
-               --  Update cursor position
-               Cursor_X := Integer (X) + 1;
-               Cursor_Y := Integer (Y);
+               Render_Cell (X, Y, C, Cursor_X, Cursor_Y, Active_Style, Style_Set);
                Changed := True;
 
             end if;
@@ -143,19 +167,7 @@ package body Thuja.Generic_Renderer is
             C := Get (After, X, Y);
 
             if C /= Blank then
-               if Integer (X) /= Cursor_X or else Integer (Y) /= Cursor_Y then
-                  Emit (Move_To (X, Y));
-               end if;
-
-               if not Style_Set or else C.Style /= Active_Style then
-                  Emit (Select_Style (C.Style));
-                  Active_Style := C.Style;
-                  Style_Set := True;
-               end if;
-
-               Emit (UTF8.Encode (Printable (C.Glyph)));
-               Cursor_X := Integer (X) + 1;
-               Cursor_Y := Integer (Y);
+               Render_Cell (X, Y, C, Cursor_X, Cursor_Y, Active_Style, Style_Set);
             end if;
          end loop;
       end loop;
