@@ -29,6 +29,21 @@ package body Thuja.Input with SPARK_Mode is
    procedure Feed_CSI (D : in out Decoder; Byte : Character; E : out Event)
      with Pre => not E'Constrained;
 
+   procedure Feed_SS3 (D : in out Decoder; Byte : Character; E : out Event)
+     with Pre => not E'Constrained;
+
+   procedure Feed_UTF8 (D : in out Decoder; Byte : Character; E : out Event)
+     with Pre => not E'Constrained;
+
+   --  Validate the second byte of a UTF-8 sequence
+   function Second_Ok (Lead, Byte : Natural) return Boolean is
+   (case Lead is
+         when 16#E0# => Byte in 16#A0# .. 16#BF#,
+         when 16#ED# => Byte in 16#80# .. 16#9F#,
+         when 16#F0# => Byte in 16#90# .. 16#BF#,
+         when 16#F4# => Byte in 16#80# .. 16#8F#,
+         when others => Byte in 16#80# .. 16#BF#);
+
    -----------------
    -- Feed_Ground --
    -----------------
@@ -61,8 +76,28 @@ package body Thuja.Input with SPARK_Mode is
          when 16#20# .. 16#7E# =>
             E := Text (Byte);
 
+         when 2#11000010# .. 2#11011111# =>
+            D.Where := UTF8;
+            D.Bytes (1) := Byte;
+            D.Have  := 1;
+            D.Need  := 2;
+            E := No_Event;
+
+         when 2#11100000# .. 2#11101111# =>
+            D.Where := UTF8;
+            D.Bytes (1) := Byte;
+            D.Have  := 1;
+            D.Need  := 3;
+            E := No_Event;
+
+         when 2#11110000# .. 2#11110100# =>
+            D.Where := UTF8;
+            D.Bytes (1) := Byte;
+            D.Have  := 1;
+            D.Need  := 4;
+            E := No_Event;
+
          when others =>
-            --  PLACEHOLDER: 16#80# and above is UTF-8 text.
             E := No_Event;
       end case;
    end Feed_Ground;
@@ -98,8 +133,11 @@ package body Thuja.Input with SPARK_Mode is
          when '0' .. '9' =>
             E := Key_Press (Digit (Character'Pos (Byte) - Character'Pos ('0')), Alt);
 
+         when 'O' =>
+            D.Where := SS3;
+            E := No_Event;
+
          when others =>
-            --  PLACEHOLDER: 'O' starts an SS3 sequence (F1 to F4).
             E := No_Event;
       end case;
    end Feed_Escape;
@@ -148,6 +186,56 @@ package body Thuja.Input with SPARK_Mode is
       end case;
    end Feed_CSI;
 
+   --------------
+   -- Feed_SS3 --
+   --------------
+
+   procedure Feed_SS3 (D : in out Decoder; Byte : Character; E : out Event) is
+   begin
+      --  SS3 is a single shift, so we only process as SS3 for one byte
+      D.Where := Ground;
+
+      case Byte is
+         when 'P' .. 'S' =>
+            E := Key_Press
+               (Key'Val (Key'Pos (Key_F1) + Character'Pos (Byte) - Character'Pos ('P')));
+         when others => E := No_Event;
+      end case;
+   end Feed_SS3;
+
+   ---------------
+   -- Feed_UTF8 --
+   ---------------
+
+   procedure Feed_UTF8 (D : in out Decoder; Byte : Character; E : out Event) is
+      Code : constant Natural := Character'Pos (Byte);
+   begin
+      if Code not in 2#10000000# .. 2#10111111#
+         or else D.Have >= D.Need
+         or else (D.Have = 1 and then not Second_Ok (Character'Pos (D.Bytes (1)), Code))
+      then
+         --  Not a continuation byte: drop the unfinished character and
+         --  read Byte as the start of something new.
+         D := (Where => Ground, Bytes => "    ", others => 0);
+         Feed_Ground (D, Byte, E);
+         return;
+      end if;
+
+      D.Have := D.Have + 1;
+      D.Bytes (D.Have) := Byte;
+
+      if D.Have = D.Need then
+         E := (Kind   => Text_Input,
+               Time   => 0,
+               Window => Bedrock.Screen.No_Window,
+               Text   => D.Bytes,
+               Length => D.Need);
+         D := (Where => Ground, Bytes => "    ", others => 0);
+      else
+         E := No_Event;
+      end if;
+   end Feed_UTF8;
+
    ----------
    -- Feed --
    ----------
@@ -158,6 +246,8 @@ package body Thuja.Input with SPARK_Mode is
          when Ground => Feed_Ground (D, Byte, E);
          when Escape => Feed_Escape (D, Byte, E);
          when CSI    => Feed_CSI (D, Byte, E);
+         when SS3    => Feed_SS3 (D, Byte, E);
+         when UTF8   => Feed_UTF8 (D, Byte, E);
       end case;
    end Feed;
 
@@ -166,14 +256,17 @@ package body Thuja.Input with SPARK_Mode is
    -----------
 
    procedure Flush (D : in out Decoder; E : out Event) is
+      Alt_Shift : constant Modifiers := (Alt => True, Shift => True, others => False);
    begin
       if D.Where = Escape then
          E := Key_Press (Key_Escape);
+      elsif D.Where = SS3 then
+         E := Key_Press (Key_O, Alt_Shift);
       else
          E := No_Event;
       end if;
 
-      D := (Where => Ground, Length => 0);
+      D := (Where => Ground, Bytes => "    ", others => 0);
    end Flush;
 
 end Thuja.Input;

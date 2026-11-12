@@ -1,0 +1,5 @@
+pragma Restrictions (No_Allocators);
+pragma Restrictions (No_Implicit_Heap_Allocations);
+pragma Restrictions (No_Implicit_Task_Allocations);
+pragma Restrictions (No_Dependence => Ada.Strings.Unbounded);
+pragma Restrictions (No_Dependence => Ada.Containers);

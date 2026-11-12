@@ -32,10 +32,8 @@
 --  and End. Everything else is recognised as a sequence and dropped
 --  whole (never leaked as stray text), or ignored. Missing, roughly in
 --  order of need:
---    * UTF-8 text (bytes 16#80# and above),
 --    * CSI with parameters: Delete, Insert, Page Up/Down, F5 to F12,
 --      and modifiers on arrows ("1;5C" is Ctrl + Right),
---    * SS3 sequences (ESC O ...): F1 to F4, application-mode arrows,
 --    * mouse reports (SGR mode 1006) and bracketed paste.
 --  tests/ has a TODO line for each.
 
@@ -68,15 +66,22 @@ package Thuja.Input with SPARK_Mode is
 
 private
 
-   type State is (Ground, Escape, CSI);
+   type State is (Ground, Escape, CSI, SS3, UTF8);
    --  Ground : between events.
    --  Escape : 1B received.
    --  CSI    : 1B 5B received; collecting until the final byte.
+   --  SS3    : 1B 4F received; one byte follows.
+   --  UTF8   : lead byte of a multi-byte character received
 
    type Decoder is record
       Where  : State := Ground;
       Length : Natural range 0 .. Max_Sequence := 0;
       --  Parameter bytes seen in the current CSI sequence.
+
+      --  UTF-8 state
+      Bytes  : Text_Bytes := "    ";
+      Have   : Natural range 0 .. 4 := 0;
+      Need   : Natural range 0 .. 4 := 0;
    end record;
 
    function Pending (D : Decoder) return Boolean is (D.Where /= Ground);

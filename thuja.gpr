@@ -17,6 +17,8 @@ library project Thuja is
    for Create_Missing_Dirs use "True";
 
    package Compiler is
+      for Local_Configuration_Pragmas use "thuja.adc";
+
       for Default_Switches ("Ada") use
         ("-gnat2022",   --  Ada 2022
          "-gnata",      --  contracts and assertions checked at runtime
