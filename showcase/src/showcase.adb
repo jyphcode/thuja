@@ -35,6 +35,7 @@ with Thuja.Widgets.Labels;
 with Demo.Keyboard;
 with Demo.Placeholder;
 with Demo.Text_Fields;
+with Demo.HTop;
 
 procedure Showcase is
 
@@ -51,7 +52,7 @@ procedure Showcase is
 
    type Demo_Access is not null access all Demo.Instance'Class;
 
-   HTop_Demo        : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("HTop");
+   HTop_Demo        : aliased Demo.HTop.State;
    Text_Editor_Demo : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("Text Editor");
    Flexbox_Demo     : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("Flexbox");
    Sort_Visual_Demo : aliased Demo.Placeholder.State := Demo.Placeholder.Make ("Sort Visual");
