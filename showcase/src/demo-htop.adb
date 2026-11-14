@@ -19,7 +19,7 @@ package body Demo.HTop is
    Header : constant Style := Inverse (Bold (Plain));
    Faint  : constant Style := Dim (Plain);
 
-   Refresh_Interval : constant := 10;
+   Refresh_Interval : constant := 30;
 
    Max_Procs : constant := 40;
    Row_Width : constant := 64;
@@ -38,7 +38,8 @@ package body Demo.HTop is
    Header_Text : constant Row_String :=
      "   PID USER         %CPU   %MEM       TIME COMMAND              ";
 
-   Is_Windows : constant Boolean := (GNAT.OS_Lib.Directory_Separator = '\');
+   Is_Windows   : constant Boolean := (GNAT.OS_Lib.Directory_Separator = '\');
+   Win_Total_MB : Natural := 0;
 
    function Image (N : Natural) return String;
    function Level_Color (Value : Gauges.Percent) return Style;
@@ -46,6 +47,8 @@ package body Demo.HTop is
    function Pad_Left (S : String; Width : Positive) return String;
    function Pad_Right (S : String; Width : Positive) return String;
    procedure Sort_Rows (By_Mem : Boolean);
+   procedure Insert_Top_Row (Rec : Proc_Record; By_Mem : Boolean);
+   procedure Detect_Windows_RAM;
    procedure Format_PS_Line
      (Raw     : String;
       Rec_Out : out Proc_Record);
@@ -95,7 +98,7 @@ package body Demo.HTop is
       for C of S loop
          exit when C = '.';
          if C in '0' .. '9' then
-            if Acc < 10_000_000 then
+            if Acc < 100_000_000 then
                Acc := Acc * 10 + (Character'Pos (C) - Character'Pos ('0'));
             end if;
          end if;
@@ -163,6 +166,71 @@ package body Demo.HTop is
    end Sort_Rows;
 
    --------------------
+   -- Insert_Top_Row --
+   --------------------
+
+   procedure Insert_Top_Row (Rec : Proc_Record; By_Mem : Boolean) is
+   begin
+      if Row_Count < Max_Procs then
+         Row_Count := Row_Count + 1;
+         Rows (Row_Count) := Rec;
+         Sort_Rows (By_Mem);
+      else
+         declare
+            Beats_Last : constant Boolean :=
+              (if By_Mem
+               then Rec.Mem_Key > Rows (Max_Procs).Mem_Key
+               else Rec.CPU_Key > Rows (Max_Procs).CPU_Key);
+         begin
+            if Beats_Last then
+               Rows (Max_Procs) := Rec;
+               Sort_Rows (By_Mem);
+            end if;
+         end;
+      end if;
+   end Insert_Top_Row;
+
+   ------------------------
+   -- Detect_Windows_RAM --
+   ------------------------
+
+   procedure Detect_Windows_RAM is
+      use GNAT.OS_Lib;
+      Args : Argument_List :=
+        [new String'("-NoProfile"),
+         new String'("-Command"),
+         new String'
+           ("[math]::Round((Get-CimInstance Win32_ComputerSystem)"
+            & ".TotalPhysicalMemory / 1MB)")];
+      Status : aliased Integer := 0;
+   begin
+      declare
+         Output : constant String :=
+           GNAT.Expect.Get_Command_Output
+             (Command    => "powershell",
+              Arguments  => Args,
+              Input      => "",
+              Status     => Status'Access,
+              Err_To_Out => True);
+      begin
+         for A of Args loop
+            Free (A);
+         end loop;
+         Win_Total_MB := Parse_Digits (Output);
+      end;
+
+      if Win_Total_MB < 1_024 then
+         Win_Total_MB := 16_384;
+      end if;
+   exception
+      when others =>
+         for A of Args loop
+            Free (A);
+         end loop;
+         Win_Total_MB := 16_384;
+   end Detect_Windows_RAM;
+
+   --------------------
    -- Format_PS_Line --
    --------------------
 
@@ -204,11 +272,16 @@ package body Demo.HTop is
       end loop;
 
       declare
-         PID_S  : constant String := (if L1 >= F1 then Clean (F1 .. L1) else "");
-         User_S : constant String := (if L2 >= F2 then Clean (F2 .. L2) else "");
-         CPU_S  : constant String := (if L3 >= F3 then Clean (F3 .. L3) else "");
-         Mem_S  : constant String := (if L4 >= F4 then Clean (F4 .. L4) else "");
-         Time_S : constant String := (if L5 >= F5 then Clean (F5 .. L5) else "");
+         PID_S  : constant String :=
+           (if L1 >= F1 then Clean (F1 .. L1) else "");
+         User_S : constant String :=
+           (if L2 >= F2 then Clean (F2 .. L2) else "");
+         CPU_S  : constant String :=
+           (if L3 >= F3 then Clean (F3 .. L3) else "");
+         Mem_S  : constant String :=
+           (if L4 >= F4 then Clean (F4 .. L4) else "");
+         Time_S : constant String :=
+           (if L5 >= F5 then Clean (F5 .. L5) else "");
          Rest   : constant String :=
            (if Pos <= Clean'Last then Clean (Pos .. Clean'Last) else "");
          Slash  : constant Natural :=
@@ -272,33 +345,46 @@ package body Demo.HTop is
       Next_CSV_Field (F2, L2); --  PID
       Next_CSV_Field (F3, L3); --  Session Name
       Next_CSV_Field (F4, L4); --  Session#
-      Next_CSV_Field (F5, L5); --  Mem Usage (e.g. "193,832 K")
+      Next_CSV_Field (F5, L5); --  Mem Usage (in KB)
 
       declare
-         Cmd_S   : constant String := (if L1 >= F1 then Clean (F1 .. L1) else "");
-         PID_S   : constant String := (if L2 >= F2 then Clean (F2 .. L2) else "");
-         User_S  : constant String := (if L3 >= F3 then Clean (F3 .. L3) else "");
-         Mem_Raw : constant String := (if L5 >= F5 then Clean (F5 .. L5) else "");
+         Cmd_S   : constant String :=
+           (if L1 >= F1 then Clean (F1 .. L1) else "");
+         PID_S   : constant String :=
+           (if L2 >= F2 then Clean (F2 .. L2) else "");
+         User_S  : constant String :=
+           (if L3 >= F3 then Clean (F3 .. L3) else "");
+         Mem_Raw : constant String :=
+           (if L5 >= F5 then Clean (F5 .. L5) else "");
 
          PID_Num : constant Natural := Parse_Digits (PID_S);
          Mem_KB  : constant Natural := Parse_Digits (Mem_Raw);
-         --  Convert KB to % of a typical 16 GB system (167,772 KB = 1.0%)
-         Mem_Whole : constant Natural := Mem_KB / 160_000;
-         Mem_Frac  : constant Natural := (Mem_KB / 16_000) mod 10;
-         Mem_Pct_S : constant String  :=
-           Image (Mem_Whole) & "." & Image (Mem_Frac);
 
-         --  Derive active CPU activity from working-set size & tick
-         CPU_Tenths : constant Natural :=
-           (if PID_Num = 0 then 0
-            else ((Mem_KB / 25_000) + ((PID_Num + Tick) mod 15)) mod 240);
+         --  Scale %MEM in tenths against detected Win_Total_MB
+         Divisor    : constant Positive :=
+           Positive'Max (1, (Win_Total_MB * 1_024) / 1_000);
+         Mem_Tenths : constant Natural  := Mem_KB / Divisor;
+         Mem_Pct_S  : constant String   :=
+           Image (Mem_Tenths / 10) & "." & Image (Mem_Tenths mod 10);
+
+         --  Weight interactive user apps (Console) higher
+         Is_User_App : constant Boolean :=
+           (User_S'Length >= 7
+            and then User_S (User_S'First .. User_S'First + 6) = "Console");
+         CPU_Tenths  : constant Natural :=
+           (if PID_Num = 0 or else Cmd_S = "Memory Compression" then 0
+            elsif Is_User_App
+            then Natural'Min
+              (95, (Mem_KB / 55_000) + ((PID_Num + Tick) mod 8))
+            else Natural'Min
+              (35, (Mem_KB / 120_000) + ((PID_Num + Tick) mod 4)));
          CPU_S : constant String :=
            Image (CPU_Tenths / 10) & "." & Image (CPU_Tenths mod 10);
 
-         Mins   : constant Natural := (PID_Num mod 12);
+         Mins   : constant Natural := (PID_Num mod 10);
          Secs   : constant Natural := (PID_Num * 7 + Tick) mod 60;
          Time_S : constant String  :=
-           "0" & Image (Mins mod 10) & ":"
+           "0" & Image (Mins) & ":"
            & (if Secs < 10 then "0" else "") & Image (Secs) & ".00";
       begin
          Rec_Out.CPU_Key := CPU_Tenths;
@@ -320,22 +406,27 @@ package body Demo.HTop is
    procedure Refresh_Processes (D : in out State) is
       use GNAT.OS_Lib;
       Sort_Flag : constant String := (if D.Sort_By_Mem then "-m" else "-r");
-      --  On Windows, filter out PID 0/4 Idle/System and only grab active apps (>10,000 KB)
       Args : Argument_List :=
         (if Is_Windows
          then [new String'("/FO"),
                new String'("CSV"),
                new String'("/NH"),
                new String'("/FI"),
-               new String'("MEMUSAGE gt 15000")]
+               new String'("MEMUSAGE gt 25000")]
          else [new String'("-eo"),
                new String'("pid,user,pcpu,pmem,time,comm"),
                new String'(Sort_Flag)]);
-      Cmd      : constant String := (if Is_Windows then "tasklist" else "ps");
-      Status   : aliased Integer := 0;
-      CPU_Sum  : Natural := 0;
-      Mem_Sum  : Natural := 0;
+      Cmd          : constant String :=
+        (if Is_Windows then "tasklist" else "ps");
+      Status       : aliased Integer := 0;
+      CPU_Sum      : Natural := 0;
+      Mem_Sum      : Natural := 0;
+      Win_MB_Total : Natural := 0;
    begin
+      if Is_Windows and then Win_Total_MB = 0 then
+         Detect_Windows_RAM;
+      end if;
+
       declare
          Output : constant String :=
            GNAT.Expect.Get_Command_Output
@@ -357,26 +448,30 @@ package body Demo.HTop is
             if Output (I) = ASCII.LF then
                Line := Line + 1;
 
-               if (Is_Windows or else Line > 1)
+               if (Is_Windows
+                   or else (Line > 1 and then Row_Count < Max_Procs))
                  and then I > First
-                 and then Row_Count < Max_Procs
                then
                   declare
-                     Raw_Line : constant String := Output (First .. I - 1);
+                     Raw_Line  : constant String := Output (First .. I - 1);
+                     Candidate : Proc_Record;
                   begin
                      if Raw_Line'Length > 3
-                       and then (not Is_Windows or else Raw_Line (Raw_Line'First) = '"')
+                       and then (not Is_Windows
+                                 or else Raw_Line (Raw_Line'First) = '"')
                      then
-                        Row_Count := Row_Count + 1;
                         if Is_Windows then
                            Format_Tasklist_Line
-                             (Raw_Line, D.Ticks, Rows (Row_Count));
-                           CPU_Sum := CPU_Sum + (Rows (Row_Count).CPU_Key / 10);
-                           Mem_Sum := Mem_Sum + (Rows (Row_Count).Mem_Key / 160_000);
+                             (Raw_Line, D.Ticks, Candidate);
+                           Win_MB_Total :=
+                             Win_MB_Total + (Candidate.Mem_Key / 1_024);
+                           Insert_Top_Row (Candidate, By_Mem => D.Sort_By_Mem);
                         else
-                           Format_PS_Line (Raw_Line, Rows (Row_Count));
-                           CPU_Sum := CPU_Sum + Rows (Row_Count).CPU_Key;
-                           Mem_Sum := Mem_Sum + Rows (Row_Count).Mem_Key;
+                           Format_PS_Line (Raw_Line, Candidate);
+                           Row_Count := Row_Count + 1;
+                           Rows (Row_Count) := Candidate;
+                           CPU_Sum := CPU_Sum + Candidate.CPU_Key;
+                           Mem_Sum := Mem_Sum + Candidate.Mem_Key;
                         end if;
                      end if;
                   end;
@@ -387,12 +482,16 @@ package body Demo.HTop is
          end loop;
       end;
 
-      if Row_Count > 1 then
-         Sort_Rows (By_Mem => D.Sort_By_Mem);
-      end if;
-
-      if Row_Count > 0 then
-         D.CPU_Total := Natural'Min (100, Natural'Max (8, CPU_Sum / 3));
+      if Is_Windows and then Row_Count > 0 then
+         for K in 1 .. Row_Count loop
+            CPU_Sum := CPU_Sum + Rows (K).CPU_Key;
+         end loop;
+         D.CPU_Total := Natural'Min (100, Natural'Max (8, CPU_Sum / 22));
+         D.Mem_Total :=
+           Natural'Min
+             (100, Natural'Max (10, (Win_MB_Total * 100) / Win_Total_MB));
+      elsif Row_Count > 0 then
+         D.CPU_Total := Natural'Min (100, Natural'Max (5, CPU_Sum / 3));
          D.Mem_Total := Natural'Min (100, Natural'Max (15, Mem_Sum));
       end if;
 
@@ -479,10 +578,10 @@ package body Demo.HTop is
                [Fixed (1), Fixed (1), Fixed (1), Fixed (1)]);
 
       Base : constant Natural := D.CPU_Total;
-      C1   : constant Gauges.Percent := Natural'Min (100, Base + 6);
-      C2   : constant Gauges.Percent := Natural'Min (100, Base / 2 + 4);
-      C3   : constant Gauges.Percent := Natural'Min (100, (Base * 3) / 4 + 2);
-      C4   : constant Gauges.Percent := Natural'Min (100, Base / 3 + 1);
+      C1   : constant Gauges.Percent := Natural'Min (100, Base + 4);
+      C2   : constant Gauges.Percent := Natural'Min (100, (Base * 2) / 3 + 2);
+      C3   : constant Gauges.Percent := Natural'Min (100, (Base * 3) / 4 + 1);
+      C4   : constant Gauges.Percent := Natural'Min (100, Base / 2 + 1);
       Sort_Label : constant String :=
         (if D.Sort_By_Mem then "MEM%" else "CPU%");
    begin
@@ -516,7 +615,7 @@ package body Demo.HTop is
 
       Labels.Draw
         (Frame, Bands (4),
-         "Up/Down: select   c: sort CPU   m: sort Mem",
+         "c: sort CPU   m: sort MEM",
          Faint);
    end Draw;
 
