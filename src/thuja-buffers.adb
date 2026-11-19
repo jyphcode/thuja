@@ -1,3 +1,5 @@
+with Thuja.UTF8;
+
 package body Thuja.Buffers with SPARK_Mode is
 
    -----------
@@ -72,13 +74,24 @@ package body Thuja.Buffers with SPARK_Mode is
       S    : Style;
       Clip : Rect)
    is
-      Wide : Wide_Wide_String (Text'Range);
+      Wide : Wide_Wide_String (1 .. Text'Length) := [others => ' '];
+      Last : Natural := 0;
+      I    : Natural := 0;
    begin
-      for I in Text'Range loop
-         Wide (I) := Wide_Wide_Character'Val (Character'Pos (Text (I)));
+      while I < Text'Length loop
+         pragma Loop_Invariant (Last <= I);
+         declare
+            First : constant Positive := Text'First;
+            N     : constant Positive :=
+              Natural'Min (UTF8.Sequence_Length (Text (First + I)), Text'Length - I);
+         begin
+            Last := Last + 1;
+            Wide (Last) := UTF8.Decode (Text (First + I .. First + I + (N - 1)));
+            I := I + N;
+         end;
       end loop;
 
-      Put_Wide (B, X, Y, Wide, S, Clip);
+      Put_Wide (B, X, Y, Wide (1 .. Last), S, Clip);
    end Put;
 
    --------------

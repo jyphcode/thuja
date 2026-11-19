@@ -177,6 +177,11 @@ procedure Tests is
       Clear (B);
       Check ("Clear",                 Row (B, 0) = "        ");
 
+      Put (B, 0, 0, "caf" & Thuja.UTF8.Encode(Wide_Wide_Character'Val (16#E9#)),
+           Plain, Clip => Area (B));
+      Check ("Put decodes UTF-8",
+             Row_Image (B, 0) = "caf" & Wide_Wide_Character'Val (16#E9#) & "    ");
+
       Check ("UTF-8, 1 byte",         Thuja.UTF8.Encode ('A') = "A");
       Check ("UTF-8, 2 bytes",
              Thuja.UTF8.Encode (Wide_Wide_Character'Val (16#E9#))

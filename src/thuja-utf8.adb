@@ -24,4 +24,65 @@ package body Thuja.UTF8 with SPARK_Mode is
       end if;
    end Encode;
 
+   ---------------------
+   -- Sequence_Length --
+   ---------------------
+
+   function Sequence_Length (Lead : Character) return Positive is
+   begin
+      case Character'Pos (Lead) is
+         when 16#C2# .. 16#DF# => return 2;
+         when 16#E0# .. 16#EF# => return 3;
+         when 16#F0# .. 16#F4# => return 4;
+         when others           => return 1;
+      end case;
+   end Sequence_Length;
+
+   ------------
+   -- Decode --
+   ------------
+
+   function Decode (S : String) return Wide_Wide_Character is
+      Bad  : constant Wide_Wide_Character := Wide_Wide_Character'Val (16#FFFD#);
+      Lead : Natural;
+      Need : Positive;
+      Code : Natural;
+   begin
+      if S'Length = 0 then
+         return Bad;
+      end if;
+
+      Lead := Character'Pos (S (S'First));
+
+      case Lead is
+         when 16#00# .. 16#7F# => Need := 1; Code := Lead;
+         when 16#C2# .. 16#DF# => Need := 2; Code := Lead mod 32;
+         when 16#E0# .. 16#EF# => Need := 3; Code := Lead mod 16;
+         when 16#F0# .. 16#F4# => Need := 4; Code := Lead mod 8;
+         when others           => return Bad;
+      end case;
+
+      if S'Length /= Need then
+         return Bad;
+      end if;
+
+      for K in 1 .. Need - 1 loop
+         pragma Loop_Invariant (Code < 2 ** (5 + 6 * (K - 1)));
+         declare
+            B : constant Natural := Character'Pos (S (S'First + K));
+         begin
+            if B not in 16#80# .. 16#BF# then
+               return Bad;
+            end if;
+            Code := Code * 64 + B mod 64;
+         end;
+      end loop;
+
+      if Code > 16#10_FFFF# or else Code in 16#D800# .. 16#DFFF# then
+         return Bad;
+      end if;
+
+      return Wide_Wide_Character'Val (Code);
+   end Decode;
+
 end Thuja.UTF8;
