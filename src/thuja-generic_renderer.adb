@@ -22,7 +22,14 @@ package body Thuja.Generic_Renderer is
    --  C, or a space if C is a control character. Cell contents must
    --  never be able to send a command to the terminal.
 
-   procedure Emit_Cell (X, Y : Pixels; C : Cell);
+   procedure Render_Cell
+     (X, Y         : Pixels;
+      C            : Cell;
+      Cursor_X     : in out Integer;
+      Cursor_Y     : in out Integer;
+      Active_Style : in out Style;
+      Style_Set    : in out Boolean);
+   --  Emit cursor jump and style changes only when state differs.
 
    procedure Emit_Cursor (C : Cursor_Info);
 
@@ -79,21 +86,49 @@ package body Thuja.Generic_Renderer is
       return C;
    end Printable;
 
-   ---------------
-   -- Emit_Cell --
-   ---------------
+   -----------------
+   -- Render_Cell --
+   -----------------
 
-   procedure Emit_Cell (X, Y : Pixels; C : Cell) is
+   procedure Render_Cell
+      (X, Y : Pixels;
+      C : Cell;
+      Cursor_X : in out Integer;
+      Cursor_Y : in out Integer;
+      Active_Style : in out Style;
+      Style_Set : in out Boolean) is
    begin
-      Emit (Move_To (X, Y) & Select_Style (C.Style) & UTF8.Encode (Printable (C.Glyph)));
-   end Emit_Cell;
+      --  Jump cursor if not in position
+      if Integer (X) /= Cursor_X or else Integer (Y) /= Cursor_Y then
+         Emit (Move_To (X, Y));
+      end if;
+
+      --  If different from active state, emit style
+      if not Style_Set or else C.Style /= Active_Style then
+         Emit (Select_Style (C.Style));
+         Active_Style := C.Style;
+         Style_Set := True;
+      end if;
+
+      --  Print char
+      Emit (UTF8.Encode (Printable (C.Glyph)));
+
+      --  Update cursor position
+      Cursor_X := Integer (X) + 1;
+      Cursor_Y := Integer (Y);
+   end Render_Cell;
 
    ----------
    -- Diff --
    ----------
 
    procedure Diff (Before, After : Buffer) is
-      Changed : Boolean := False;
+      Changed      : Boolean := False;
+      Cursor_X     : Integer := -1;
+      Cursor_Y     : Integer := -1;
+      Active_Style : Style;
+      Style_Set    : Boolean := False;
+      C            : Cell;
    begin
       --  Hide the Cursor if it was visible
       --  To avoid a flicker
@@ -104,9 +139,14 @@ package body Thuja.Generic_Renderer is
 
       for Y in 0 .. After.Height - 1 loop
          for X in 0 .. After.Width - 1 loop
-            if Get (After, X, Y) /= Get (Before, X, Y) then
-               Emit_Cell (X, Y, Get (After, X, Y));
+
+            C := Get (After, X, Y);
+
+            if C /= Get (Before, X, Y) then
+
+               Render_Cell (X, Y, C, Cursor_X, Cursor_Y, Active_Style, Style_Set);
                Changed := True;
+
             end if;
          end loop;
       end loop;
@@ -127,13 +167,21 @@ package body Thuja.Generic_Renderer is
    ----------
 
    procedure Full (After : Buffer) is
+      Cursor_X     : Integer := -1;
+      Cursor_Y     : Integer := -1;
+      Active_Style : Style;
+      Style_Set    : Boolean := False;
+      C            : Cell;
    begin
       Emit (Reset & Erase);
 
       for Y in 0 .. After.Height - 1 loop
          for X in 0 .. After.Width - 1 loop
-            if Get (After, X, Y) /= Blank then
-               Emit_Cell (X, Y, Get (After, X, Y));
+
+            C := Get (After, X, Y);
+
+            if C /= Blank then
+               Render_Cell (X, Y, C, Cursor_X, Cursor_Y, Active_Style, Style_Set);
             end if;
          end loop;
       end loop;
