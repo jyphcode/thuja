@@ -35,9 +35,6 @@ package body Demo.HTop is
    Rows      : array (1 .. Max_Procs) of Proc_Record;
    Row_Count : Natural := 0;
 
-   Header_Text : constant Row_String :=
-     "   PID USER         %CPU   %MEM       TIME COMMAND              ";
-
    Is_Windows   : constant Boolean := (GNAT.OS_Lib.Directory_Separator = '\');
    Win_Total_MB : Natural := 0;
 
@@ -57,6 +54,9 @@ package body Demo.HTop is
       Tick    : Natural;
       Rec_Out : out Proc_Record);
    procedure Refresh_Processes (D : in out State);
+   procedure Draw_Header
+     (Frame : in out Buffer;
+      Area  : Rect);
    procedure Draw_Meter
      (Frame : in out Buffer;
       Area  : Rect;
@@ -190,7 +190,11 @@ package body Demo.HTop is
       end if;
    end Insert_Top_Row;
 
-procedure Detect_Windows_RAM is
+   ------------------------
+   -- Detect_Windows_RAM --
+   ------------------------
+
+   procedure Detect_Windows_RAM is
       use GNAT.OS_Lib;
       A1 : aliased String := "-NoProfile";
       A2 : aliased String := "-Command";
@@ -220,6 +224,7 @@ procedure Detect_Windows_RAM is
       when others =>
          Win_Total_MB := 16_384;
    end Detect_Windows_RAM;
+
    --------------------
    -- Format_PS_Line --
    --------------------
@@ -487,31 +492,16 @@ procedure Detect_Windows_RAM is
          D.Mem_Total := Natural'Min (100, Natural'Max (15, Mem_Sum));
       end if;
 
-      if Row_Count = 0 then
-         Row_Count := 1;
-         Format_PS_Line ("1 system 0.0 0.1 00:00.01 showcase", Rows (1));
-      end if;
-
    exception
       when others =>
-         if Row_Count = 0 then
-            Row_Count := 1;
-            Rows (1).Text :=
-              Pad_Left ("1", 6) & " "
-              & Pad_Right ("system", 10) & " "
-              & Pad_Left ("0.0", 6) & " "
-              & Pad_Left ("0.1", 6) & " "
-              & Pad_Left ("00:00.01", 10) & " "
-              & Pad_Right ("showcase", 21);
-         end if;
+         null;
    end Refresh_Processes;
 
    -------------------
    -- Process_Count --
    -------------------
 
-   function Process_Count return Natural is
-     (if Row_Count = 0 then 1 else Row_Count);
+   function Process_Count return Natural is (Row_Count);
 
    -----------------
    -- Process_Row --
@@ -523,8 +513,30 @@ procedure Detect_Windows_RAM is
          return Rows (Index).Text;
       end if;
 
-      return Rows (1).Text;
+      return "";
    end Process_Row;
+
+   -----------------
+   -- Draw_Header --
+   -----------------
+
+   procedure Draw_Header
+     (Frame : in out Buffer;
+      Area  : Rect)
+   is
+      Cols : constant Rect_Array :=
+        Split (Area, Row,
+               [Fixed (6), Fixed (10), Fixed (6),
+                Fixed (6), Fixed (10), Flex],
+               Gap => 1);
+   begin
+      Labels.Draw (Frame, Cols (1), "PID", Header, Labels.Right);
+      Labels.Draw (Frame, Cols (2), "USER", Header);
+      Labels.Draw (Frame, Cols (3), "%CPU", Header, Labels.Right);
+      Labels.Draw (Frame, Cols (4), "%MEM", Header, Labels.Right);
+      Labels.Draw (Frame, Cols (5), "TIME", Header, Labels.Right);
+      Labels.Draw (Frame, Cols (6), "COMMAND", Header);
+   end Draw_Header;
 
    ----------------
    -- Draw_Meter --
@@ -598,7 +610,7 @@ procedure Detect_Windows_RAM is
         (Frame, Right_M (4),
          "Row: " & Image (D.Procs.Selected) & "/" & Image (Row_Count), Faint);
 
-      Labels.Draw (Frame, Bands (2), Header_Text, Header);
+      Draw_Header (Frame, Bands (2));
 
       Process_Lists.Draw (Frame, Bands (3), D.Procs);
 
@@ -629,10 +641,12 @@ procedure Detect_Windows_RAM is
             when 'c' | 'C' =>
                D.Sort_By_Mem := False;
                Sort_Rows (By_Mem => False);
+               D.Ticks := 0;
                Used := True;
             when 'm' | 'M' =>
                D.Sort_By_Mem := True;
                Sort_Rows (By_Mem => True);
+               D.Ticks := 0;
                Used := True;
             when others =>
                Used := False;
