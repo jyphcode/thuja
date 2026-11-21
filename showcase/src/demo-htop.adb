@@ -190,18 +190,15 @@ package body Demo.HTop is
       end if;
    end Insert_Top_Row;
 
-   ------------------------
-   -- Detect_Windows_RAM --
-   ------------------------
-
-   procedure Detect_Windows_RAM is
+procedure Detect_Windows_RAM is
       use GNAT.OS_Lib;
-      Args : Argument_List :=
-        [new String'("-NoProfile"),
-         new String'("-Command"),
-         new String'
-           ("[math]::Round((Get-CimInstance Win32_ComputerSystem)"
-            & ".TotalPhysicalMemory / 1MB)")];
+      A1 : aliased String := "-NoProfile";
+      A2 : aliased String := "-Command";
+      A3 : aliased String :=
+        "[math]::Round((Get-CimInstance Win32_ComputerSystem)"
+        & ".TotalPhysicalMemory / 1MB)";
+      Args : constant Argument_List :=
+        [A1'Unchecked_Access, A2'Unchecked_Access, A3'Unchecked_Access];
       Status : aliased Integer := 0;
    begin
       declare
@@ -213,9 +210,6 @@ package body Demo.HTop is
               Status     => Status'Access,
               Err_To_Out => True);
       begin
-         for A of Args loop
-            Free (A);
-         end loop;
          Win_Total_MB := Parse_Digits (Output);
       end;
 
@@ -224,12 +218,8 @@ package body Demo.HTop is
       end if;
    exception
       when others =>
-         for A of Args loop
-            Free (A);
-         end loop;
          Win_Total_MB := 16_384;
    end Detect_Windows_RAM;
-
    --------------------
    -- Format_PS_Line --
    --------------------
@@ -405,17 +395,23 @@ package body Demo.HTop is
 
    procedure Refresh_Processes (D : in out State) is
       use GNAT.OS_Lib;
-      Sort_Flag : constant String := (if D.Sort_By_Mem then "-m" else "-r");
-      Args : Argument_List :=
+      W1 : aliased String := "/FO";
+      W2 : aliased String := "CSV";
+      W3 : aliased String := "/NH";
+      W4 : aliased String := "/FI";
+      W5 : aliased String := "MEMUSAGE gt 25000";
+
+      U1 : aliased String := "-eo";
+      U2 : aliased String := "pid,user,pcpu,pmem,time,comm";
+      U3 : aliased String := (if D.Sort_By_Mem then "-m" else "-r");
+
+      Args : constant Argument_List :=
         (if Is_Windows
-         then [new String'("/FO"),
-               new String'("CSV"),
-               new String'("/NH"),
-               new String'("/FI"),
-               new String'("MEMUSAGE gt 25000")]
-         else [new String'("-eo"),
-               new String'("pid,user,pcpu,pmem,time,comm"),
-               new String'(Sort_Flag)]);
+         then [W1'Unchecked_Access, W2'Unchecked_Access,
+               W3'Unchecked_Access, W4'Unchecked_Access,
+               W5'Unchecked_Access]
+         else [U1'Unchecked_Access, U2'Unchecked_Access,
+               U3'Unchecked_Access]);
       Cmd          : constant String :=
         (if Is_Windows then "tasklist" else "ps");
       Status       : aliased Integer := 0;
@@ -438,10 +434,6 @@ package body Demo.HTop is
          First  : Positive := Output'First;
          Line   : Natural  := 0;
       begin
-         for A of Args loop
-            Free (A);
-         end loop;
-
          Row_Count := 0;
 
          for I in Output'Range loop
@@ -502,9 +494,6 @@ package body Demo.HTop is
 
    exception
       when others =>
-         for A of Args loop
-            Free (A);
-         end loop;
          if Row_Count = 0 then
             Row_Count := 1;
             Rows (1).Text :=
